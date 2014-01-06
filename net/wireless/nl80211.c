@@ -242,6 +242,8 @@ static const struct nla_policy nl80211_policy[NL80211_ATTR_MAX+1] = {
 	[NL80211_ATTR_MAC_HINT] = { .len = ETH_ALEN },
 	[NL80211_ATTR_WIPHY_FREQ_HINT] = { .type = NLA_U32 },
 	[NL80211_ATTR_TDLS_PEER_CAPABILITY] = { .type = NLA_U32 },
+	[NL80211_ATTR_STA_SUPPORTED_CHANNELS] = { .type = NLA_BINARY },
+	[NL80211_ATTR_STA_SUPPORTED_OPER_CLASSES] = { .type = NLA_BINARY },
 };
 
 /* policy for the key attributes */
@@ -2921,6 +2923,27 @@ static int nl80211_set_station_tdls(struct genl_info *info,
 	return 0;
 }
 
+static int nl80211_set_station_tdls(struct genl_info *info,
+				    struct station_parameters *params)
+{
+	int err;
+	/* Dummy STA entry gets updated once the peer capabilities are known */
+	if (info->attrs[NL80211_ATTR_PEER_AID])
+		params->aid = nla_get_u16(info->attrs[NL80211_ATTR_PEER_AID]);
+	if (info->attrs[NL80211_ATTR_HT_CAPABILITY])
+		params->ht_capa =
+			nla_data(info->attrs[NL80211_ATTR_HT_CAPABILITY]);
+	if (info->attrs[NL80211_ATTR_VHT_CAPABILITY])
+		params->vht_capa =
+			nla_data(info->attrs[NL80211_ATTR_VHT_CAPABILITY]);
+
+	err = nl80211_parse_sta_channel_info(info, params);
+	if (err)
+		return err;
+
+	return nl80211_parse_sta_wme(info, params);
+}
+
 static int nl80211_set_station(struct sk_buff *skb, struct genl_info *info)
 {
 	struct cfg80211_registered_device *rdev = info->user_ptr[0];
@@ -3166,6 +3189,13 @@ static int nl80211_new_station(struct sk_buff *skb, struct genl_info *info)
 
 	if (!rdev->ops->add_station)
 		return -EOPNOTSUPP;
+	err = nl80211_parse_sta_channel_info(info, &params);
+	if (err)
+		return err;
+
+	err = nl80211_parse_sta_wme(info, &params);
+	if (err)
+		return err;
 
 	if (parse_station_flags(info, dev->ieee80211_ptr->iftype, &params))
 		return -EINVAL;
