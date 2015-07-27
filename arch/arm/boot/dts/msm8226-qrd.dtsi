@@ -59,9 +59,9 @@
 			focaltech,family-id = <0x55>;
 			focaltech,reset-gpio = <&msmgpio 16 0x00>;
 			focaltech,irq-gpio = <&msmgpio 17 0x00>;
-			focaltech,display-coords = <0 0 1080 1920>;
-			focaltech,panel-coords = <0 0 1080 2000>;
-			focaltech,button-map= <139 102 158>;
+			focaltech,display-coords = <0 0 720 1280>;
+			focaltech,panel-coords = <0 0 720 1280>;
+			focaltech,button-map = <139 102 158>;
 			focaltech,no-force-update;
 			focaltech,i2c-pull-up;
 			focaltech,group-id = <1>;
@@ -78,13 +78,26 @@
 		};
 	};
 
-	gen-vkeys {
+	gen-vkeys-rmi4 {
+		compatible = "qcom,gen-vkeys";
+		label = "synaptics_rmi4_i2c";
+		vkeys = "0x01:139:101:1343:120:96:0x01:102:360:1343:150:96:0x01:158:618:1343:120:96";
+		qcom,disp-maxx = <720>;
+		qcom,disp-maxy = <1280>;
+		qcom,panel-maxx = <720>;
+		qcom,panel-maxy = <1392>;
+		qcom,key-codes = <139 102 158>;
+		qcom,y-offset = <35>;
+	};
+
+	gen-vkeys-ft5x06 {
 		compatible = "qcom,gen-vkeys";
 		label = "ft5x06_ts";
-		qcom,disp-maxx = <1080>;
-		qcom,disp-maxy = <1920>;
-		qcom,panel-maxx = <1080>;
-		qcom,panel-maxy = <2080>;
+		vkeys = "0x01:139:101:1343:120:96:0x01:102:360:1343:150:96:0x01:158:618:1343:120:96";
+		qcom,disp-maxx = <720>;
+		qcom,disp-maxy = <1280>;
+		qcom,panel-maxx = <720>;
+		qcom,panel-maxy = <1392>;
 		qcom,key-codes = <139 102 158>;
 		qcom,y-offset = <0>;
 	};
