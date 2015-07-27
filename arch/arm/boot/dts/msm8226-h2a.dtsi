@@ -126,6 +126,18 @@
 		};
 	};
 
+	gen-vkeys-ft5x06 {
+		compatible = "qcom,gen-vkeys";
+		label = "ft5x06_ts";
+		vkeys = "0x01:139:101:1343:120:96:0x01:102:360:1343:150:96:0x01:158:618:1343:120:96";
+		qcom,disp-maxx = <720>;
+		qcom,disp-maxy = <1280>;
+		qcom,panel-maxx = <720>;
+		qcom,panel-maxy = <1392>;
+		qcom,key-codes = <139 102 158>;
+		qcom,y-offset = <0>;
+	};
+
 	gen-vkeys {
 		compatible = "qcom,gen-vkeys";
 		label = "ft5x06_ts";
