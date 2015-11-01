@@ -58,7 +58,7 @@ static int __init w1_gpio_probe(struct platform_device *pdev)
 {
 	struct w1_bus_master *master;
 	struct w1_gpio_platform_data *pdata = pdev->dev.platform_data;
-	int err;
+	int err = 0;
 	struct device_node *node;
 	char *key;
 	int ret;
