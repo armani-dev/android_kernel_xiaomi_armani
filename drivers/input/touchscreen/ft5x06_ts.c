@@ -357,7 +357,7 @@ static u8 ft5x06_get_factory_id(struct ft5x06_data *ft5x06)
 	int error = 0;
 	int i, j;
 	u8 reg_val[2], val1, val2;
-	u8 ft5336_bootloader_ver;
+	u8 ft5336_bootloader_ver = 0;
 	struct ft5x06_packet packet;
 	u8 vid;
 
@@ -467,7 +467,7 @@ static int ft5x06_load_firmware(struct ft5x06_data *ft5x06,
 	bool calib_ok = false;
 #endif
 	bool is_5336_fwsize_30 = false;
-	u8 ft5336_bootloader_ver;
+	u8 ft5336_bootloader_ver = 0;
 	struct upgrade_info ui;
 	const struct firmware *fw;
 	struct ft5x06_ts_platform_data *pdata = ft5x06->dev->platform_data;
@@ -1006,7 +1006,7 @@ static ssize_t ft5x06_vkeys_show(struct kobject *kobj,
 	struct ft5x06_data *ft5x06 =
 		container_of(attr, struct ft5x06_data, vkeys_attr);
 	struct ft5x06_ts_platform_data *pdata = ft5x06->dev->platform_data;
-	const struct ft5x06_keypad_data *keypad;
+	const struct ft5x06_keypad_data *keypad = NULL;
 	int i, count = 0;
 
 	for (i = 0; i < pdata->cfg_size; i++) {

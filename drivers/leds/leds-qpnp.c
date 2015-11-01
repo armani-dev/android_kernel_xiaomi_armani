@@ -576,7 +576,7 @@ static int qpnp_wled_sync(struct qpnp_led_data *led)
 static int qpnp_wled_set(struct qpnp_led_data *led)
 {
 	static int max_current, digital;
-	int rc, duty, level, scale_ratio = WLED_SCALE_VAL;
+	int rc, duty = 0, level, scale_ratio = WLED_SCALE_VAL;
 	u8 val, i, num_wled_strings, sink_val;
 
 	num_wled_strings = led->wled_cfg->num_strings;
