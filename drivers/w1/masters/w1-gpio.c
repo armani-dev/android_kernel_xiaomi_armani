@@ -2,12 +2,14 @@
  * w1-gpio - GPIO w1 bus master driver
  *
  * Copyright (C) 2007 Ville Syrjala <syrjala@sci.fi>
+ * Copyright (C) 2015 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation.
  */
 
+#define pr_fmt(fmt)	"w1-gpio: %s:" fmt , __func__
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
@@ -17,6 +19,14 @@
 
 #include "../w1.h"
 #include "../w1_int.h"
+
+#include <linux/of.h>
+#include <linux/err.h>
+
+static struct of_device_id w1_gpio_match_table[] = {
+       { .compatible = "qcom,w1-gpio" },
+       {}
+};
 
 static void w1_gpio_write_bit_dir(void *data, u8 bit)
 {
@@ -47,9 +57,37 @@ static int __init w1_gpio_probe(struct platform_device *pdev)
 	struct w1_bus_master *master;
 	struct w1_gpio_platform_data *pdata = pdev->dev.platform_data;
 	int err;
+	struct device_node *node;
+	char *key;
+	int ret;
+	unsigned int is_open_drain;
 
-	if (!pdata)
-		return -ENXIO;
+    if (!pdata)
+	{
+                pdata = kzalloc(sizeof(struct w1_gpio_platform_data), GFP_KERNEL);
+                if (!pdata)
+                        return -ENOMEM;
+                pdev->dev.platform_data =(void *) pdata;
+	}
+
+	/* parse device tree */
+	node = pdev->dev.of_node;
+	key = "qcom,gpio-pin";
+	ret = of_property_read_u32(node, key, &(pdata->pin));
+	if (ret) {
+                pr_err("%s: missing DT key '%s'\n", __func__, key);
+                goto free_pdata;
+	}
+
+	pr_info("gpio %d\n", pdata->pin);
+	key = "qcom,is-open-drain";
+	ret = of_property_read_u32(node, key, &(is_open_drain));
+	if (ret) {
+                pr_err("%s: missing DT key '%s'\n", __func__, key);
+                goto free_pdata;
+	}
+	pdata->is_open_drain = is_open_drain?1:0;
+
 
 	master = kzalloc(sizeof(struct w1_bus_master), GFP_KERNEL);
 	if (!master)
@@ -85,6 +123,8 @@ static int __init w1_gpio_probe(struct platform_device *pdev)
 	gpio_free(pdata->pin);
  free_master:
 	kfree(master);
+ free_pdata:
+	kfree(pdata);
 
 	return err;
 }
@@ -135,6 +175,7 @@ static struct platform_driver w1_gpio_driver = {
 	.driver = {
 		.name	= "w1-gpio",
 		.owner	= THIS_MODULE,
+		.of_match_table = w1_gpio_match_table,
 	},
 	.remove	= __exit_p(w1_gpio_remove),
 	.suspend = w1_gpio_suspend,
