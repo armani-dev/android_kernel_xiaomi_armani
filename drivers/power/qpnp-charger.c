@@ -4662,6 +4662,10 @@ qpnp_chg_request_irqs(struct qpnp_chg_chip *chip)
 
 	return rc;
 }
+ 
+#if (defined (CONFIG_ARCH_MSM8226) && defined (CONFIG_W1_SLAVE_BQ2022))
+extern int w1_bq2022_battery_id(void);
+#endif
 
 static int
 qpnp_chg_load_battery_data(struct qpnp_chg_chip *chip)
@@ -4675,12 +4679,18 @@ qpnp_chg_load_battery_data(struct qpnp_chg_chip *chip)
 			"qcom,battery-data");
 	if (node) {
 		memset(&batt_data, 0, sizeof(struct bms_battery_data));
+#if (defined (CONFIG_ARCH_MSM8226) && defined (CONFIG_W1_SLAVE_BQ2022))
+		result.physical = w1_bq2022_battery_id();
+		/*when w1 mets an unrecognized battery by return 0, disable the charger*/
+		chip->charging_disabled = result.physical?0:1;
+#else
 		rc = qpnp_vadc_read(chip->vadc_dev, LR_MUX2_BAT_ID, &result);
 		if (rc) {
 			pr_err("error reading batt id channel = %d, rc = %d\n",
 						LR_MUX2_BAT_ID, rc);
 			return rc;
 		}
+#endif
 
 		batt_data.max_voltage_uv = -1;
 		batt_data.iterm_ua = -1;
