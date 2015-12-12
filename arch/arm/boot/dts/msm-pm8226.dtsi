@@ -45,7 +45,7 @@
 				qcom,pon-type = <0>;
 				qcom,support-reset = <1>;
 				qcom,pull-up = <1>;
-				qcom,s1-timer = <10256>;
+				qcom,s1-timer = <4480>;
 				qcom,s2-timer = <2000>;
 				qcom,s2-type = <1>;
 				linux,code = <116>;
@@ -75,8 +75,8 @@
 			#size-cells = <1>;
 			status = "disabled";
 
-			qcom,vddmax-mv = <4200>;
-			qcom,vddsafe-mv = <4230>;
+			qcom,vddmax-mv = <4350>;
+			qcom,vddsafe-mv = <4400>;
 			qcom,vinmin-mv = <4300>;
 			qcom,vbatdet-delta-mv = <100>;
 			qcom,ibatmax-ma = <1500>;
@@ -193,11 +193,12 @@
 			#size-cells = <1>;
 			status = "disabled";
 
+			qcom,use-external-rsense; 
 			qcom,r-sense-uohm = <10000>;
 			qcom,v-cutoff-uv = <3400000>;
-			qcom,max-voltage-uv = <4200000>;
+			qcom,max-voltage-uv = <4350000>;
 			qcom,r-conn-mohm = <0>;
-			qcom,shutdown-soc-valid-limit = <100>;
+			qcom,shutdown-soc-valid-limit = <15>;
 			qcom,adjust-soc-low-threshold = <15>;
 			qcom,ocv-voltage-high-threshold-uv = <3750000>;
 			qcom,ocv-voltage-low-threshold-uv = <3650000>;
@@ -361,6 +362,11 @@
 			mpp@a700 {
 				reg = <0xa700 0x100>;
 				qcom,pin-num = <8>;
+				qcom,mode = <2>;
+				qcom,vin-sel = <1>;
+				qcom,pull = <1>;
+				qcom,invert = <0>;
+				qcom,master-en = <1>;
 			};
 		};
 
@@ -864,6 +870,22 @@
 						"flash0_trigger";
 				qcom,id = <1>;
 				linux,name = "led:flash_0";
+				qcom,current = <625>;
+			};
+
+			pm8226_flash1: qcom,flash_1 {
+				qcom,max-current = <1000>;
+				qcom,default-state = "off";
+				qcom,headroom = <3>;
+				qcom,duration = <1280>;
+				qcom,clamp-curr = <200>;
+				qcom,startup-dly = <3>;
+				qcom,safety-timer;
+				linux,default-trigger =
+						"flash1_trigger";
+				label = "flash";
+				qcom,id = <2>;
+				linux,name = "led:flash_1";
 				qcom,current = <625>;
 			};
 
