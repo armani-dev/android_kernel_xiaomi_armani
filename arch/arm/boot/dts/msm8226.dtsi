@@ -1,4 +1,5 @@
 /* Copyright (c) 2012-2015, The Linux Foundation. All rights reserved.
+ * Copyright (C) 2015 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -1033,6 +1034,21 @@
 		qcom,sda-gpio = <&msmgpio 18 0>;
 		qcom,scl-gpio = <&msmgpio 19 0>;
 	};
+
+	i2c@f9928000 { /* BLSP1 QUP6 */
+                cell-index = <6>;
+                compatible = "qcom,i2c-qup";
+                #address-cells = <1>;
+                #size-cells = <0>;
+                reg-names = "qup_phys_addr";
+                reg = <0xf9928000 0x1000>;
+                interrupt-names = "qup_err_intr";
+                interrupts = <0 100 0>;
+                qcom,i2c-bus-freq = <384000>;
+                qcom,i2c-src-freq = <19200000>;
+                qcom,sda-gpio = <&msmgpio 22 0>;
+                qcom,scl-gpio = <&msmgpio 23 0>;
+        };
 
 	qcom,clock-a7@f9011050 {
 		compatible = "qcom,clock-a7-8226";
