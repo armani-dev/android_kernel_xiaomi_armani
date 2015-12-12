@@ -1,4 +1,5 @@
 /* Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
+ * Copyright (C) 2015 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -238,7 +239,27 @@ static struct gpiomux_setting lcd_rst_sus_cfg = {
 	.pull = GPIOMUX_PULL_DOWN,
 };
 
+static struct gpiomux_setting lcd_bl_hwen_act_cfg = {
+	.func = GPIOMUX_FUNC_GPIO,
+	.drv = GPIOMUX_DRV_2MA,
+	.pull = GPIOMUX_PULL_UP,
+	.dir = GPIOMUX_OUT_HIGH,
+};
+
+static struct gpiomux_setting lcd_bl_hwen_sus_cfg = {
+	.func = GPIOMUX_FUNC_GPIO,
+	.drv = GPIOMUX_DRV_2MA,
+	.pull = GPIOMUX_PULL_DOWN,
+};
+
 static struct msm_gpiomux_config msm_lcd_configs[] __initdata = {
+	{
+		.gpio = 4,
+		.settings = {
+			[GPIOMUX_ACTIVE]    = &lcd_bl_hwen_act_cfg,
+			[GPIOMUX_SUSPENDED] = &lcd_bl_hwen_sus_cfg,
+		},
+	},
 	{
 		.gpio = 25,		/* LCD Reset */
 		.settings = {
@@ -352,6 +373,48 @@ static struct msm_gpiomux_config msm_synaptics_configs[] __initdata = {
 			[GPIOMUX_SUSPENDED] = &synaptics_int_sus_cfg,
 		},
 	},
+};
+
+static struct gpiomux_setting vibrator_en_act_cfg = {
+        .func = GPIOMUX_FUNC_GPIO,
+        .drv = GPIOMUX_DRV_8MA,
+        .pull = GPIOMUX_PULL_DOWN,
+};
+
+static struct gpiomux_setting vibrator_en_sus_cfg = {
+        .func = GPIOMUX_FUNC_GPIO,
+        .drv = GPIOMUX_DRV_2MA,
+        .pull = GPIOMUX_PULL_DOWN,
+};
+
+static struct gpiomux_setting haptic_en_act_cfg = {
+        .func = GPIOMUX_FUNC_GPIO,
+        .drv = GPIOMUX_DRV_2MA,
+        .pull = GPIOMUX_PULL_UP,
+};
+
+static struct gpiomux_setting haptic_en_sus_cfg = {
+        .func = GPIOMUX_FUNC_GPIO,
+        .drv = GPIOMUX_DRV_2MA,
+        .pull = GPIOMUX_PULL_DOWN,
+        .dir = GPIOMUX_OUT_LOW,
+};
+
+static struct msm_gpiomux_config msm_haptic_configs[] __initdata = {
+        {
+                .gpio = 51,
+                .settings = {
+                        [GPIOMUX_ACTIVE] = &haptic_en_act_cfg,
+                        [GPIOMUX_SUSPENDED] = &haptic_en_sus_cfg,
+                },
+        },
+        {
+                .gpio = 33,
+                .settings = {
+                        [GPIOMUX_ACTIVE] = &vibrator_en_act_cfg,
+                        [GPIOMUX_SUSPENDED] = &vibrator_en_sus_cfg,
+                },
+        },
 };
 
 static struct gpiomux_setting gpio_nc_cfg = {
@@ -740,6 +803,20 @@ static struct msm_gpiomux_config msm_sensor_configs[] __initdata = {
 			[GPIOMUX_SUSPENDED] = &cam_settings[4],
 		},
 	},
+	{
+		.gpio = 3, /* CAM1_AF_PWDM */
+		.settings = {
+			[GPIOMUX_ACTIVE]    = &cam_settings[3],
+			[GPIOMUX_SUSPENDED] = &cam_settings[4],
+		},
+	},
+	{
+		.gpio = 86, /* CAM2_PWRDOWN */
+		.settings = {
+			[GPIOMUX_ACTIVE]    = &cam_settings[3],
+			[GPIOMUX_SUSPENDED] = &cam_settings[4],
+		},
+	},
 
 };
 
@@ -904,6 +981,46 @@ static void msm_gpiomux_sdc3_install(void)
 static void msm_gpiomux_sdc3_install(void) {}
 #endif /* CONFIG_MMC_MSM_SDC3_SUPPORT */
 
+static struct gpiomux_setting hs_uart_sw_suspend_cfg = {
+        .func = GPIOMUX_FUNC_GPIO,
+        .drv = GPIOMUX_DRV_2MA,
+        .dir = GPIOMUX_OUT_LOW,
+};
+
+static struct msm_gpiomux_config hs_uart_sw_configs[] __initdata = {
+	{
+		.gpio = 31,
+		.settings = {
+			[GPIOMUX_SUSPENDED] = &hs_uart_sw_suspend_cfg,
+		},
+	},
+};
+
+static struct gpiomux_setting external_ovp_actv_cfg =
+{
+	.func = GPIOMUX_FUNC_GPIO,
+	.drv = GPIOMUX_DRV_8MA,
+	.pull = GPIOMUX_PULL_NONE,
+	.dir = GPIOMUX_OUT_LOW,
+};
+
+static struct msm_gpiomux_config pm8226_ovp_configs[] __initdata =
+{
+	{
+		.gpio      = 109,
+		.settings = {
+			[GPIOMUX_ACTIVE]    = &external_ovp_actv_cfg,
+			[GPIOMUX_SUSPENDED] = NULL,
+		},
+	},
+};
+
+static void msm_gpiomux_extovp_install(void)
+{
+	msm_gpiomux_install(pm8226_ovp_configs,
+	ARRAY_SIZE(pm8226_ovp_configs));
+}
+
 void __init msm8226_init_gpiomux(void)
 {
 	int rc;
@@ -962,7 +1079,10 @@ void __init msm8226_init_gpiomux(void)
 		msm_gpiomux_install(usb_otg_sw_configs,
 					ARRAY_SIZE(usb_otg_sw_configs));
 
+	msm_gpiomux_install(hs_uart_sw_configs, ARRAY_SIZE(hs_uart_sw_configs));
+
 	msm_gpiomux_sdc3_install();
+	msm_gpiomux_extovp_install();
 
 	/*
 	 * HSIC STROBE gpio is also used by the ethernet. Install HSIC
@@ -976,6 +1096,8 @@ void __init msm8226_init_gpiomux(void)
 	}
 	msm_gpiomux_install(msm_hsic_configs, ARRAY_SIZE(msm_hsic_configs));
 #endif
+	msm_gpiomux_install(msm_haptic_configs, ARRAY_SIZE(msm_haptic_configs));
+
 	if (machine_is_msm8926() && of_board_is_mtp())
 		msm_gpiomux_install(smsc_hub_configs,
 			ARRAY_SIZE(smsc_hub_configs));
