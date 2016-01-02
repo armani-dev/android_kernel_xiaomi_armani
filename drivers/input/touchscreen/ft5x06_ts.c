@@ -966,17 +966,21 @@ static int fb_notifier_callback(struct notifier_block *self,
 {
 	struct fb_event *evdata = data;
 	int *blank;
+	static int u_blank;
 	struct ft5x06_data *ft5x06 =
 		container_of(self, struct ft5x06_data, fb_notif);
-		
+
 	if (evdata && evdata->data && event == FB_EVENT_BLANK &&
-			ft5x06 && ft5x06->dev) {		
+			ft5x06 && ft5x06->dev) {
 		blank = evdata->data;
 		if (*blank == FB_BLANK_UNBLANK) {
-			pr_info("ft5x06 resume!\n");
-			ft5x06_resume(ft5x06);
+			if(u_blank) {
+				pr_info("ft5x06 resume!\n");
+				ft5x06_resume(ft5x06);
+			}
 		}
 		else if (*blank == FB_BLANK_POWERDOWN) {
+			u_blank = 1;
 			pr_info("ft5x06 suspend!\n");
 			ft5x06_suspend(ft5x06);
 		}
