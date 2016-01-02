@@ -54,7 +54,7 @@
 			compatible = "ft,ft5x06_i2c";
 			reg = <0x38>;
 			interrupt-parent = <&msmgpio>;
-			interupts = <17 0x2>;
+			interrupts = <17 0x2>;
 			vdd-supply = <&pm8226_l19>;
 			vcc_i2c-supply = <&pm8226_lvs1>;
 			ft5x06_i2c,i2c-pull-up;
