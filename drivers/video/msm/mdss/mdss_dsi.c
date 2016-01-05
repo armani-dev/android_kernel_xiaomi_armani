@@ -75,7 +75,7 @@ static int mdss_dsi_panel_power_on(struct mdss_panel_data *pdata, int enable)
 			goto error;
 		}
 
-		if (pdata->panel_info.panel_power_on == 0 || !pdata->panel_info.mipi.lp11_init) {
+		if (!pdata->panel_info.mipi.lp11_init) {
 			ret = mdss_dsi_panel_reset(pdata, 1);
 			if (ret) {
 				pr_err("%s: Panel reset failed. rc=%d\n",
