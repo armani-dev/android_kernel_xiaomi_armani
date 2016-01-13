@@ -2049,10 +2049,16 @@ EXPORT_SYMBOL_GPL(ft5x06_probe);
 void ft5x06_remove(struct ft5x06_data *ft5x06)
 {
 	struct ft5x06_ts_platform_data *pdata = ft5x06->dev->platform_data;
-
+#if defined(CONFIG_FB)
+	int error;
+#endif
 	cancel_delayed_work_sync(&ft5x06->noise_filter_delayed_work);
 	unregister_power_supply_notifier(&ft5x06->power_supply_notifier);
-#ifdef CONFIG_HAS_EARLYSUSPEND
+#if defined(CONFIG_FB)
+	error = fb_unregister_client(&ft5x06->fb_notif);
+	if (error)
+		dev_err(ft5x06->dev, "Error occurred while unregistering fb_notifier.\n");
+#elif defined(CONFIG_HAS_EARLYSUSPEND)
 	unregister_early_suspend(&ft5x06->early_suspend);
 #endif
 	sysfs_remove_group(&ft5x06->dev->kobj, &ft5x06_attr_group);
