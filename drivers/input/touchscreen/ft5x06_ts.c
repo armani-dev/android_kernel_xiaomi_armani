@@ -71,6 +71,7 @@
 #define FT_REG_RESET_FW		0x07
 #define FT_REG_FW_MIN_VER	0xB2
 #define FT_REG_FW_SUB_MIN_VER	0xB3
+#define FT5x0x_ID_G_FT5201ID	0xA8 //v_id register
 
 /* power register bits*/
 #define FT_PMODE_ACTIVE		0x00
@@ -152,6 +153,21 @@
 #define FT_MAGIC_BLOADER_LZ4	0x6ffa
 #define FT_MAGIC_BLOADER_GZF_30	0x7ff4
 #define FT_MAGIC_BLOADER_GZF	0x7bf4
+ 
+/* firmware check */
+#define FT_CUSTOM_OFILM_VID	0x51
+#define FT_CUSTOM_WINTEK_VID	0x89
+#define FT_CUSTOM_BIEL_VID	0x3B
+#define FT_CUSTOM_DEFAULT_VID	0x51 //Default: FT5316
+
+#define FT_CUSTOM_CHIP_ID	0x14
+#define FT_DEFAULT_CHIP_ID	0x0A //Default: FT5316
+
+/* Firmwares list */
+#define FT_CUSTOM_OFILM_FIRMWARE "ft5336_firmware_ofilm.fw"
+#define FT_CUSTOM_WINTEK_FIRMWARE "ft5336_firmware_wintek.fw"
+#define FT_CUSTOM_BIEL_FIRMWARE "ft5336_firmware_biel.fw"
+#define FT_CUSTOM_DEFAULT_FIRMWARE "ft5316_firmware.fw"
 
 enum {
 	FT_BLOADER_VERSION_LZ4 = 0,
@@ -1192,12 +1208,7 @@ static int ft5x06_get_dt_coords(struct device *dev, char *name,
 		return rc;
 	}
 
-	if (!strcmp(name, "focaltech,panel-coords")) {
-		pdata->panel_minx = coords[0];
-		pdata->panel_miny = coords[1];
-		pdata->panel_maxx = coords[2];
-		pdata->panel_maxy = coords[3];
-	} else if (!strcmp(name, "focaltech,display-coords")) {
+	if (!strcmp(name, "focaltech,display-coords")) {
 		pdata->x_min = coords[0];
 		pdata->y_min = coords[1];
 		pdata->x_max = coords[2];
@@ -1226,10 +1237,6 @@ static int ft5x06_parse_dt(struct device *dev,
 		return rc;
 	}
 
-	rc = ft5x06_get_dt_coords(dev, "focaltech,panel-coords", pdata);
-	if (rc && (rc != -EINVAL))
-		return rc;
-
 	rc = ft5x06_get_dt_coords(dev, "focaltech,display-coords", pdata);
 	if (rc)
 		return rc;
@@ -1249,13 +1256,6 @@ static int ft5x06_parse_dt(struct device *dev,
 				0, &pdata->irq_gpio_flags);
 	if (pdata->irq_gpio < 0)
 		return pdata->irq_gpio;
-
-	pdata->fw_name = "ft_fw.bin";
-	rc = of_property_read_string(np, "focaltech,fw-name", &pdata->fw_name);
-	if (rc && (rc != -EINVAL)) {
-		dev_err(dev, "Unable to read fw name\n");
-		return rc;
-	}
 
 	rc = of_property_read_u32(np, "focaltech,group-id", &temp_val);
 	if (!rc)
@@ -1367,6 +1367,47 @@ static int ft5x06_parse_dt(struct device *dev,
 }
 #endif
 
+static ssize_t ft5x06_vkeys_show(struct kobject *kobj,
+					struct kobj_attribute *attr, char *buf)
+{
+	struct button {
+		int keycode;
+		int x, y;
+		int width, height;
+	} buttons[3];
+
+	ssize_t size = 0, i;
+
+	buttons[0].keycode = 580; // APP_SWITCH, 139 for MENU
+	buttons[0].x = 155;
+	buttons[0].y = 1319;
+	buttons[0].width = 10;
+	buttons[0].height = 50;
+
+	buttons[1].keycode = 172; // HOME
+	buttons[1].x = 355;
+	buttons[1].y = 1319;
+	buttons[1].width = 10;
+	buttons[1].height = 50;
+
+	buttons[2].keycode = 158; // BACK
+	buttons[2].x = 565;
+	buttons[2].y = 1319;
+	buttons[2].width = 10;
+	buttons[2].height = 50;
+
+	for (i = 0; i < 3; ++i) {
+		size += snprintf(buf+size, PAGE_SIZE-size, "0x%02x:%d:%d:%d:%d:%d\n", EV_KEY, buttons[i].keycode, buttons[i].x + buttons[i].width / 2,
+							buttons[i].y + buttons[i].height / 2, buttons[i].width,
+							buttons[i].height);
+	}
+
+	return size;
+}
+
+struct kobject *vkeys_dir;
+struct kobj_attribute vkeys_attr;
+
 static int ft5x06_ts_probe(struct i2c_client *client,
 			   const struct i2c_device_id *id)
 {
@@ -1374,7 +1415,7 @@ static int ft5x06_ts_probe(struct i2c_client *client,
 	struct ft5x06_ts_data *data;
 	struct input_dev *input_dev;
 	struct dentry *temp;
-	u8 reg_value;
+	u8 chip_id, v_id, reg_value;
 	u8 reg_addr;
 	int err, len;
 
@@ -1409,16 +1450,6 @@ static int ft5x06_ts_probe(struct i2c_client *client,
 	if (!data) {
 		dev_err(&client->dev, "Not enough memory\n");
 		return -ENOMEM;
-	}
-
-	if (pdata->fw_name) {
-		len = strlen(pdata->fw_name);
-		if (len > FT_FW_NAME_MAX_LEN - 1) {
-			dev_err(&client->dev, "Invalid firmware name\n");
-			return -EINVAL;
-		}
-
-		strlcpy(data->fw_name, pdata->fw_name, len + 1);
 	}
 
 	data->tch_data_len = FT_TCH_LEN(pdata->num_max_touches);
@@ -1456,12 +1487,6 @@ static int ft5x06_ts_probe(struct i2c_client *client,
 			     pdata->x_max, 0, 0);
 	input_set_abs_params(input_dev, ABS_MT_POSITION_Y, pdata->y_min,
 			     pdata->y_max, 0, 0);
-
-	err = input_register_device(input_dev);
-	if (err) {
-		dev_err(&client->dev, "Input device registration failed\n");
-		goto free_inputdev;
-	}
 
 	if (pdata->power_init) {
 		err = pdata->power_init(true);
@@ -1525,17 +1550,62 @@ static int ft5x06_ts_probe(struct i2c_client *client,
 	/* make sure CTP already finish startup process */
 	msleep(data->pdata->soft_rst_dly);
 
-	/* check the controller id */
+	/* check the controller/chip id */
 	reg_addr = FT_REG_ID;
-	err = ft5x06_i2c_read(client, &reg_addr, 1, &reg_value, 1);
+	err = ft5x06_i2c_read(client, &reg_addr, 1, &chip_id, 1);
 	if (err < 0) {
 		dev_err(&client->dev, "version read failed");
 		goto free_reset_gpio;
 	}
+	dev_info(&client->dev, "Firmware Chip ID = 0x%x\n", chip_id);
+	
+	/* check the vendor id */
+	reg_addr = FT5x0x_ID_G_FT5201ID;
+	err = ft5x06_i2c_read(client, &reg_addr, 1, &v_id, 1);
+	if (err < 0) {
+		dev_err(&client->dev, "version read failed");
+	} else {
+		dev_info(&client->dev, "Firmware version ID = 0x%x\n", v_id);
+	}
 
-	dev_info(&client->dev, "Device ID = 0x%x\n", reg_value);
+	/* check firmware */
+	if (v_id == FT_CUSTOM_OFILM_VID && chip_id == FT_CUSTOM_CHIP_ID) {
+		dev_info(&client->dev, "Firmware Detected = %s\n", FT_CUSTOM_OFILM_FIRMWARE);
+		pdata->fw_name = FT_CUSTOM_OFILM_FIRMWARE;
+	}
+	else if (v_id == FT_CUSTOM_WINTEK_VID && chip_id == FT_CUSTOM_CHIP_ID) {
+		dev_info(&client->dev, "Firmware Detected = %s\n", FT_CUSTOM_WINTEK_FIRMWARE);
+		pdata->fw_name = FT_CUSTOM_WINTEK_FIRMWARE;
+	}
+	else if (v_id == FT_CUSTOM_BIEL_VID && chip_id == FT_CUSTOM_CHIP_ID) {
+		dev_info(&client->dev, "Firmware Detected = %s\n", FT_CUSTOM_BIEL_FIRMWARE);
+		pdata->fw_name = FT_CUSTOM_BIEL_FIRMWARE;
+	} 
+	else if (v_id == FT_CUSTOM_DEFAULT_VID && chip_id == FT_DEFAULT_CHIP_ID) {
+		dev_info(&client->dev, "Firmware Detected = %s\n", FT_CUSTOM_DEFAULT_FIRMWARE);
+		pdata->fw_name = FT_CUSTOM_DEFAULT_FIRMWARE;
+	}
 
-	if ((pdata->family_id != reg_value) && (!pdata->ignore_id_check)) {
+	/* Changing Firmware Details here */
+	if (pdata->fw_name) {
+		len = strlen(pdata->fw_name);
+		if (len > FT_FW_NAME_MAX_LEN - 1) {
+			dev_err(&client->dev, "Invalid firmware name\n");
+			return -EINVAL;
+		}
+		dev_info(&client->dev, "Firmware Loaded = %s\n", pdata->fw_name);
+		strlcpy(data->fw_name, pdata->fw_name, len + 1);
+	}
+	
+	/* register our device */
+	err = input_register_device(input_dev);
+	if (err) {
+		dev_err(&client->dev, "Input device registration failed\n");
+		goto free_inputdev;
+	}
+
+	/* check controller support */
+	if ((pdata->family_id != chip_id) && (!pdata->ignore_id_check)) {
 		dev_err(&client->dev, "%s:Unsupported controller\n", __func__);
 		goto free_reset_gpio;
 	}
@@ -1654,7 +1724,29 @@ static int ft5x06_ts_probe(struct i2c_client *client,
 	register_early_suspend(&data->early_suspend);
 #endif
 
+	vkeys_dir = kobject_create_and_add("board_properties", NULL);
+	if (vkeys_dir == NULL) {
+		err = -ENOMEM;
+		dev_err(&client->dev, "fail to create board_properties entry\n");
+		goto free_create_kobject;
+	}
+
+	sysfs_attr_init(&vkeys_attr.attr);
+	vkeys_attr.attr.name = "virtualkeys.ft5x06_ts";
+	vkeys_attr.attr.mode = S_IRUSR | S_IRGRP | S_IROTH;
+	vkeys_attr.show  = ft5x06_vkeys_show;
+
+	err = sysfs_create_file(vkeys_dir, &vkeys_attr.attr);
+	if (err) {
+		dev_err(&client->dev, "fail to create virtualkeys entry\n");
+		goto free_create_vkeys_sysfs;
+	}
+
 	return 0;
+
+free_create_vkeys_sysfs:
+
+free_create_kobject:
 
 free_debug_dir:
 	debugfs_remove_recursive(data->dir);
