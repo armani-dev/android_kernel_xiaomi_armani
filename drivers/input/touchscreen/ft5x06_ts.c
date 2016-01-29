@@ -128,6 +128,9 @@
 #define	BL_VERSION_Z7		1
 #define	BL_VERSION_GZF	2
 
+#define SUCCESS 0
+#define FAIL 1
+
 struct upgrade_info {
 	u16	delay_aa;	/*delay of write FT_UPGRADE_AA*/
 	u16	delay_55;	/*delay of write FT_UPGRADE_55*/
@@ -186,20 +189,18 @@ struct ft5x06_data {
 
 static int ft5x06_recv_byte(struct ft5x06_data *ft5x06, u8 len, ...)
 {
-	int error;
 	va_list varg;
 	u8 i, buf[len];
-
-	error = ft5x06->bops->recv(ft5x06->dev, buf, len);
-	if (error)
-		return error;
+	
+	if (ft5x06->bops->recv(ft5x06->dev, buf, len))
+		return FAIL;
 
 	va_start(varg, len);
 	for (i = 0; i < len; i++)
 		*va_arg(varg, u8 *) = buf[i];
 	va_end(varg);
-
-	return 0;
+	
+	return SUCCESS;
 }
 
 static int ft5x06_send_block(struct ft5x06_data *ft5x06,
@@ -272,58 +273,53 @@ static int ft5x06_power_supply_event(struct notifier_block *nb, unsigned long ev
 	else if (ft5x06->dbgdump)
 		dev_info(ft5x06->dev, "Don't response to power supply event in suspend mode!\n");
 
-	return 0;
+	return SUCCESS;
 }
 
 #ifdef CONFIG_TOUCHSCREEN_FT5X06_CALIBRATE
 static int ft5x06_auto_calib(struct ft5x06_data *ft5x06)
 {
-	int error;
-	u8 val1;
 	int i;
+	u8 val1;
+	
 	msleep(200);
-	error = ft5x06_write_byte(ft5x06, /* enter factory mode */
-				FT5X0X_REG_DEVIDE_MODE, FT5X0X_DEVICE_MODE_TEST);
-	if (error)
-		return error;
+	/* enter factory mode */
+	if (ft5x06_write_byte(ft5x06, FT5X0X_REG_DEVIDE_MODE, FT5X0X_DEVICE_MODE_TEST))
+		return FAIL;
 	msleep(100);
 
-	error = ft5x06_write_byte(ft5x06, /* start calibration */
-				FT5X0X_REG_START_SCAN, FT5X0X_DEVICE_START_CALIB);
-	if (error)
-		return error;
+	/* start calibration */
+	if (ft5x06_write_byte(ft5x06, FT5X0X_REG_START_SCAN, FT5X0X_DEVICE_START_CALIB))
+		return FAIL;
 	msleep(300);
 
 	for (i = 0; i < 100; i++) {
-		error = ft5x06_read_byte(ft5x06, FT5X0X_REG_DEVIDE_MODE, &val1);
-		if (error)
-			return error;
+		if (ft5x06_read_byte(ft5x06, FT5X0X_REG_DEVIDE_MODE, &val1))
+			return FAIL;
 		if ((val1&0x70) == 0) /* return to normal mode? */
 			break;
 		msleep(200); /* not yet, wait and try again later */
 	}
 	dev_info(ft5x06->dev, "[FTS] calibration OK.\n");
 
-	msleep(300); /* enter factory mode again */
-	error = ft5x06_write_byte(ft5x06, FT5X0X_REG_DEVIDE_MODE, FT5X0X_DEVICE_MODE_TEST);
-	if (error)
-		return error;
+	msleep(300); 
+	/* enter factory mode again */
+	if (ft5x06_write_byte(ft5x06, FT5X0X_REG_DEVIDE_MODE, FT5X0X_DEVICE_MODE_TEST))
+		return FAIL;
 	msleep(100);
 
-	error = ft5x06_write_byte(ft5x06, /* save calibration result */
-				FT5X0X_REG_START_SCAN, FT5X0X_DEVICE_SAVE_RESULT);
-	if (error)
-		return error;
+	/* save calibration result */
+	if (ft5x06_write_byte(ft5x06, FT5X0X_REG_START_SCAN, FT5X0X_DEVICE_SAVE_RESULT))
+		return FAIL;
 	msleep(300);
 
-	error = ft5x06_write_byte(ft5x06, /* return to normal mode */
-				FT5X0X_REG_DEVIDE_MODE, FT5X0X_DEVICE_MODE_NORMAL);
-	if (error)
-		return error;
+	/* return to normal mode */
+	if (ft5x06_write_byte(ft5x06, FT5X0X_REG_DEVIDE_MODE, FT5X0X_DEVICE_MODE_NORMAL))
+		return FAIL;
 	msleep(300);
 	dev_info(ft5x06->dev, "[FTS] Save calib result OK.\n");
 
-	return 0;
+	return SUCCESS;
 }
 #endif
 
@@ -748,21 +744,19 @@ static int ft5x06_collect_finger(struct ft5x06_data *ft5x06,
 				struct ft5x06_finger *finger, int count)
 {
 	u8 number, buf[256];
-	int i, error;
+	int i;
 
-	error = ft5x06_read_byte(ft5x06, FT5X0X_REG_TD_STATUS, &number);
-	if (error)
-		return error;
+	if (ft5x06_read_byte(ft5x06, FT5X0X_REG_TD_STATUS, &number))
+		return FAIL;
+	
 	number &= 0x0f;
-
 	if (number > FT5X0X_MAX_FINGER)
 		number = FT5X0X_MAX_FINGER;
 
-	error = ft5x06_read_block(ft5x06, FT5X0X_REG_TOUCH_START,
-				buf, FT5X0X_TOUCH_LENGTH*number);
-	if (error)
-		return error;
-
+	if (ft5x06_read_block(ft5x06, FT5X0X_REG_TOUCH_START, 
+				buf ,FT5X0X_TOUCH_LENGTH*number)) {
+		return FAIL;
+	}
 	/* clear the finger buffer */
 	memset(finger, 0, sizeof(*finger)*count);
 
@@ -792,7 +786,7 @@ static int ft5x06_collect_finger(struct ft5x06_data *ft5x06,
 				finger[i].pressure, finger[i].size);
 	}
 
-	return 0;
+	return SUCCESS;
 }
 
 static void ft5x06_apply_filter(struct ft5x06_data *ft5x06,
@@ -905,15 +899,14 @@ static irqreturn_t ft5x06_interrupt(int irq, void *dev_id)
 {
 	struct ft5x06_finger finger[FT5X0X_MAX_FINGER];
 	struct ft5x06_data *ft5x06 = dev_id;
-	int error;
 
 	mutex_lock(&ft5x06->mutex);
-	error = ft5x06_collect_finger(ft5x06, finger, FT5X0X_MAX_FINGER);
-	if (error >= 0) {
+	if (ft5x06_collect_finger(ft5x06, finger, FT5X0X_MAX_FINGER) >= 0) {
 		ft5x06_apply_filter(ft5x06, finger, FT5X0X_MAX_FINGER);
 		ft5x06_report_touchevent(ft5x06, finger, FT5X0X_MAX_FINGER);
-	} else
-		dev_err(ft5x06->dev, "fail to collect finger(%d)\n", error);
+	} else {
+		dev_err(ft5x06->dev, "fail to collect finger(%d)\n", FAIL);
+	}
 	mutex_unlock(&ft5x06->mutex);
 
 	return IRQ_HANDLED;
@@ -966,7 +959,7 @@ static int fb_notifier_callback(struct notifier_block *self,
 {
 	struct fb_event *evdata = data;
 	int *blank;
-	static int u_blank;
+	static int ft5x06_check;
 	struct ft5x06_data *ft5x06 =
 		container_of(self, struct ft5x06_data, fb_notif);
 
@@ -974,19 +967,19 @@ static int fb_notifier_callback(struct notifier_block *self,
 			ft5x06 && ft5x06->dev) {
 		blank = evdata->data;
 		if (*blank == FB_BLANK_UNBLANK) {
-			if(u_blank) {
-				pr_info("ft5x06 resume!\n");
+			if(ft5x06_check) {
+				pr_info("ft5x06: resume!\n");
 				ft5x06_resume(ft5x06);
 			}
 		}
 		else if (*blank == FB_BLANK_POWERDOWN) {
-			u_blank = 1;
-			pr_info("ft5x06 suspend!\n");
+			ft5x06_check = 1;
+			pr_info("ft5x06: suspend!\n");
 			ft5x06_suspend(ft5x06);
 		}
 	}
 
-	return 0;
+	return SUCCESS;
 }
 #elif defined(CONFIG_HAS_EARLYSUSPEND)
 static void ft5x06_early_suspend(struct early_suspend *h)
@@ -1071,13 +1064,12 @@ static ssize_t ft5x06_object_show(struct device *dev,
 	};
 
 	struct ft5x06_data *ft5x06 = dev_get_drvdata(dev);
-	int i, error, count = 0;
+	int i, count = 0;
 	u8 val;
 
 	mutex_lock(&ft5x06->mutex);
 	for (i = 0; reg_list[i].addr != 0; i++) {
-		error = ft5x06_read_byte(ft5x06, reg_list[i].addr, &val);
-		if (error)
+		if (ft5x06_read_byte(ft5x06, reg_list[i].addr, &val))
 			break;
 
 		count += snprintf(buf+count, PAGE_SIZE-count,
@@ -1085,7 +1077,7 @@ static ssize_t ft5x06_object_show(struct device *dev,
 	}
 	mutex_unlock(&ft5x06->mutex);
 
-	return error ? : count;
+	return FAIL ? : count;
 }
 
 static ssize_t ft5x06_object_store(struct device *dev,
@@ -1125,15 +1117,13 @@ static ssize_t ft5x06_dbgdump_store(struct device *dev,
 {
 	struct ft5x06_data *ft5x06 = dev_get_drvdata(dev);
 	unsigned long dbgdump;
-	int error;
 
 	mutex_lock(&ft5x06->mutex);
-	error = strict_strtoul(buf, 0, &dbgdump);
-	if (!error)
+	if (!strict_strtoul(buf, 0, &dbgdump))
 		ft5x06->dbgdump = dbgdump;
 	mutex_unlock(&ft5x06->mutex);
 
-	return error ? : count;
+	return FAIL ? : count;
 }
 
 static ssize_t ft5x06_updatefw_store(struct device *dev,
@@ -1169,10 +1159,9 @@ static ssize_t ft5x06_tpfwver_show(struct device *dev,
 	struct ft5x06_data *ft5x06 = dev_get_drvdata(dev);
 	ssize_t num_read_chars = 0;
 	u8 fwver = 0;
-	int error;
+	
 	mutex_lock(&ft5x06->mutex);
-	error = ft5x06_read_byte(ft5x06, FT5x0x_REG_FW_VER, &fwver);
-	if (error)
+	if (ft5x06_read_byte(ft5x06, FT5x0x_REG_FW_VER, &fwver))
 		num_read_chars = snprintf(buf, PAGE_SIZE, "Get firmware version failed!\n");
 	else
 		num_read_chars = snprintf(buf, PAGE_SIZE, "%02X\n", fwver);
@@ -1183,42 +1172,37 @@ static ssize_t ft5x06_tpfwver_show(struct device *dev,
 static int ft5x06_enter_factory(struct ft5x06_data *ft5x06_ts)
 {
 	u8 reg_val;
-	int error;
-
-	error = ft5x06_write_byte(ft5x06_ts, FT5X0X_REG_DEVIDE_MODE,
-							FT5X0X_DEVICE_MODE_TEST);
-	if (error)
+	
+	if (ft5x06_write_byte(ft5x06_ts, FT5X0X_REG_DEVIDE_MODE, FT5X0X_DEVICE_MODE_TEST))
 		return -1;
 	msleep(100);
-	error = ft5x06_read_byte(ft5x06_ts, FT5X0X_REG_DEVIDE_MODE, &reg_val);
-	if (error)
+	
+	if (ft5x06_read_byte(ft5x06_ts, FT5X0X_REG_DEVIDE_MODE, &reg_val))
 		return -1;
 	if ((reg_val & 0x70) != FT5X0X_DEVICE_MODE_TEST) {
 		dev_info(ft5x06_ts->dev, "ERROR: The Touch Panel was not put in Factory Mode.");
 		return -1;
 	}
 
-	return 0;
+	return SUCCESS;
 }
 
 static int ft5x06_enter_work(struct ft5x06_data *ft5x06_ts)
 {
 	u8 reg_val;
-	int error;
-	error = ft5x06_write_byte(ft5x06_ts, FT5X0X_REG_DEVIDE_MODE,
-							FT5X0X_DEVICE_MODE_NORMAL);
-	if (error)
+	
+	if (ft5x06_write_byte(ft5x06_ts, FT5X0X_REG_DEVIDE_MODE, FT5X0X_DEVICE_MODE_NORMAL))
 		return -1;
 	msleep(100);
-	error = ft5x06_read_byte(ft5x06_ts, FT5X0X_REG_DEVIDE_MODE, &reg_val);
-	if (error)
+	
+	if (ft5x06_read_byte(ft5x06_ts, FT5X0X_REG_DEVIDE_MODE, &reg_val))
 		return -1;
 	if ((reg_val & 0x70) != FT5X0X_DEVICE_MODE_NORMAL) {
 		dev_info(ft5x06_ts->dev, "ERROR: The Touch Panel was not put in Normal Mode.\n");
 		return -1;
 	}
 
-	return 0;
+	return SUCCESS;
 }
 
 #define FT5x0x_MAX_RX_NUM   	22
@@ -1808,8 +1792,10 @@ struct ft5x06_data *ft5x06_probe(struct device *dev,
 		error = ft5x06_parse_dt(dev, pdata);
 		if (error)
 			goto err;
-	} else
+	} else {
 		pdata = dev->platform_data;
+	}
+
 	if (pdata == NULL) {
 		dev_err(dev, "platform data doesn't exist\n");
 		error = -EINVAL;
@@ -1992,9 +1978,7 @@ struct ft5x06_data *ft5x06_probe(struct device *dev,
 
 #if defined(CONFIG_FB)
 	ft5x06->fb_notif.notifier_call = fb_notifier_callback;
-
 	 error = fb_register_client(&ft5x06->fb_notif);
-
 	 if (error)
 		 dev_err(dev, "Unable to register fb_notifier: %d\n",
 			 error);
@@ -2049,14 +2033,11 @@ EXPORT_SYMBOL_GPL(ft5x06_probe);
 void ft5x06_remove(struct ft5x06_data *ft5x06)
 {
 	struct ft5x06_ts_platform_data *pdata = ft5x06->dev->platform_data;
-#if defined(CONFIG_FB)
-	int error;
-#endif
+
 	cancel_delayed_work_sync(&ft5x06->noise_filter_delayed_work);
 	unregister_power_supply_notifier(&ft5x06->power_supply_notifier);
 #if defined(CONFIG_FB)
-	error = fb_unregister_client(&ft5x06->fb_notif);
-	if (error)
+	if (fb_unregister_client(&ft5x06->fb_notif))
 		dev_err(ft5x06->dev, "Error occurred while unregistering fb_notifier.\n");
 #elif defined(CONFIG_HAS_EARLYSUSPEND)
 	unregister_early_suspend(&ft5x06->early_suspend);
