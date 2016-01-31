@@ -202,6 +202,14 @@
 		qcom,cdc-us-euro-gpios = <&msmgpio 69 0>;
 	};
 
+	vibrator {
+		status = "ok";
+		compatible = "imagis,isa1000";
+		gpio-isa1000-en = <&msmgpio 33 0x00>;
+		gpio-haptic-en = <&msmgpio 50 0x00>;
+		timeout-ms = <15000>;
+		pwm-channel = <1>;
+	};
 };
 
 &usb_otg {
