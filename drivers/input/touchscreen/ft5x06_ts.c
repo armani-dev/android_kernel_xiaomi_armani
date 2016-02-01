@@ -605,10 +605,22 @@ static int fb_notifier_callback(struct notifier_block *self,
 	if (evdata && evdata->data && event == FB_EVENT_BLANK &&
 			ft5x06_data && ft5x06_data->client) {
 		blank = evdata->data;
-		if (*blank == FB_BLANK_UNBLANK)
+		switch (*blank) {
+		case FB_BLANK_UNBLANK:
+		case FB_BLANK_NORMAL:
+		case FB_BLANK_VSYNC_SUSPEND:
+		case FB_BLANK_HSYNC_SUSPEND:
+			pr_info("ft5x06: resume requested!\n");
 			ft5x06_ts_resume(&ft5x06_data->client->dev);
-		else if (*blank == FB_BLANK_POWERDOWN)
+			break;
+		case FB_BLANK_POWERDOWN:
+			pr_info("ft5x06: suspend requested!\n");
 			ft5x06_ts_suspend(&ft5x06_data->client->dev);
+			break;
+		default:
+			/* Don't handle what we don't understand */
+			break;
+		}
 	}
 
 	return 0;
