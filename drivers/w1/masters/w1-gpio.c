@@ -52,42 +52,53 @@ static u8 w1_gpio_read_bit(void *data)
 	return gpio_get_value(pdata->pin) ? 1 : 0;
 }
 
+static int w1_gpio_probe_dt(struct device_node *node, 
+			struct w1_gpio_platform_data *pdata)
+{
+	char *key;
+	int ret;
+	unsigned int is_open_drain;
+	
+	key = "qcom,gpio-pin";
+	ret = of_property_read_u32(node, key, &(pdata->pin));
+	if (ret) {
+                pr_err("%s: missing DT key '%s'\n", __func__, key);
+                return ret;
+	}
+
+	pr_info("gpio %d\n", pdata->pin);	
+	key = "qcom,is-open-drain";
+	ret = of_property_read_u32(node, key, &(is_open_drain));
+	if (ret) {
+                pr_err("%s: missing DT key '%s'\n", __func__, key);
+                return ret;
+	}
+	pdata->is_open_drain = is_open_drain?1:0;
+	
+	return 0;
+}
+
 static int __init w1_gpio_probe(struct platform_device *pdev)
 {
 	struct w1_bus_master *master;
 	struct w1_gpio_platform_data *pdata = pdev->dev.platform_data;
-	int err;
+	int err = 0;
 	struct device_node *node;
-	char *key;
-	int ret;
-	unsigned int is_open_drain;
 
-    if (!pdata)
-	{
+	if (!pdata) {
                 pdata = kzalloc(sizeof(struct w1_gpio_platform_data), GFP_KERNEL);
                 if (!pdata)
                         return -ENOMEM;
                 pdev->dev.platform_data =(void *) pdata;
 	}
-
-	/* parse device tree */
+	
 	node = pdev->dev.of_node;
-	key = "qcom,gpio-pin";
-	ret = of_property_read_u32(node, key, &(pdata->pin));
-	if (ret) {
-                pr_err("%s: missing DT key '%s'\n", __func__, key);
-                goto free_pdata;
+	/* parse dt */
+	err = w1_gpio_probe_dt(node, pdata);
+	if (err) {
+		pr_err("%s: failed to parse DT \n", __func__);
+		goto free_pdata;
 	}
-
-	pr_info("gpio %d\n", pdata->pin);
-	key = "qcom,is-open-drain";
-	ret = of_property_read_u32(node, key, &(is_open_drain));
-	if (ret) {
-                pr_err("%s: missing DT key '%s'\n", __func__, key);
-                goto free_pdata;
-	}
-	pdata->is_open_drain = is_open_drain?1:0;
-
 
 	master = kzalloc(sizeof(struct w1_bus_master), GFP_KERNEL);
 	if (!master)
