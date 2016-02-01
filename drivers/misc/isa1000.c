@@ -167,25 +167,19 @@ static struct device_attribute isa1000_device_attrs[] = {
 	__ATTR(pwm, S_IRUGO | S_IWUSR, isa1000_pwm_show, isa1000_pwm_store),
 };
 
-static int isa1000_probe(struct platform_device *pdev)
+static int isa1000_parse_dt(struct platform_device *pdev, struct isa1000_vib *vib)
 {
-	struct isa1000_vib *vib;
-	int i, ret;
-
-	platform_set_drvdata(pdev, &vib_dev);
-	vib = (struct isa1000_vib *) platform_get_drvdata(pdev);
+	int ret;
 
 	ret = of_get_named_gpio_flags(pdev->dev.of_node, "gpio-isa1000-en", 0, NULL);
-	if (ret< 0)
-	{
+	if (ret < 0) {
 		dev_err(&pdev->dev, "please check enable gpio");
 		return ret;
 	}
 	vib->gpio_isa1000_en = ret;
 
 	ret = of_get_named_gpio_flags(pdev->dev.of_node, "gpio-haptic-en", 0, NULL);
-	if (ret < 0)
-	{
+	if (ret < 0) {
 		dev_err(&pdev->dev, "please check enable gpio");
 		return ret;
 	}
@@ -198,8 +192,27 @@ static int isa1000_probe(struct platform_device *pdev)
 	ret = of_property_read_u32(pdev->dev.of_node, "pwm-channel", &vib->pwm_channel);
 	if (ret < 0)
 		dev_err(&pdev->dev, "please check pwm output channel");
+	
+	/* print values*/
+	dev_info(&pdev->dev, "gpio-isa1000-en: %i, gpio-haptic-en: %i, timeout-ms: %i, pwm-channel: %i", 
+				vib->gpio_isa1000_en, vib->gpio_haptic_en, vib->timeout, vib->pwm_channel);
 
-	dev_info(&pdev->dev, "gpio-isa1000-en: %i, gpio-haptic-en: %i, timeout-ms: %i, pwm-channel: %i", vib->gpio_isa1000_en, vib->gpio_haptic_en, vib->timeout, vib->pwm_channel);
+	return 0;
+}
+
+static int isa1000_probe(struct platform_device *pdev)
+{
+	struct isa1000_vib *vib;
+	int i, ret;
+
+	platform_set_drvdata(pdev, &vib_dev);
+	vib = (struct isa1000_vib *) platform_get_drvdata(pdev);
+
+	/* parse dt */
+	ret = isa1000_parse_dt(pdev, vib);
+	if (ret < 0) {
+		dev_err(&pdev->dev, "error occured while parsing dt\n");
+	}
 
 	ret = gpio_is_valid(vib->gpio_isa1000_en);
 	if (ret) {
