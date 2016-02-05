@@ -33,8 +33,15 @@ struct fw_upgrade_info {
 	u16 delay_erase_flash;
 };
 
+struct ft5x06_firmware_data {
+	const char *ft_fw_name;
+	u8	chip_id;
+	u8	vendor_id;
+};
+
 struct ft5x06_ts_platform_data {
 	struct fw_upgrade_info info;
+	struct ft5x06_firmware_data *firmware;
 	const char *name;
 	const char *fw_name;
 	u32 irqflags;
@@ -55,6 +62,7 @@ struct ft5x06_ts_platform_data {
 	u32 hard_rst_dly;
 	u32 soft_rst_dly;
 	u32 num_max_touches;
+	u32 cfg_size;
 	bool fw_vkey_support;
 	bool no_force_update;
 	bool i2c_pull_up;
@@ -64,3 +72,4 @@ struct ft5x06_ts_platform_data {
 };
 
 #endif
+

@@ -58,7 +58,6 @@
 			vdd-supply = <&pm8226_l19>;
 			vcc_i2c-supply = <&pm8226_lvs1>;
 			focaltech,name = "ft5x06";
-			focaltech,family-id = <0x14>;
 			focaltech,reset-gpio = <&msmgpio 16 0x00>;
 			focaltech,irq-gpio = <&msmgpio 17 0x00>;
 			focaltech,display-coords = <0 0 720 1280>;
@@ -70,13 +69,33 @@
 			focaltech,hard-reset-delay-ms = <20>;
 			focaltech,soft-reset-delay-ms = <150>;
 			focaltech,num-max-touches = <10>;
-			//focaltech,fw-name = "ft_8226_qrd_1080p_fw.bin";
 			focaltech,fw-delay-aa-ms = <50>;
 			focaltech,fw-delay-55-ms = <30>;
 			focaltech,fw-upgrade-id1 = <0x79>;
 			focaltech,fw-upgrade-id2 = <0x03>;
 			focaltech,fw-delay-readid-ms = <10>;
 			focaltech,fw-delay-era-flsh-ms = <2000>;
+			focaltech,firmware-array-size = <4>;
+			focaltech,cfg_0 {
+				focaltech,chip = <0x0A>;
+				focaltech,vendor = <0x51>;
+				focaltech,ft-fw-name = "ft5316_firmware.fw";
+			};
+			focaltech,cfg_1 {
+				focaltech,chip = <0x14>;
+				focaltech,vendor = <0x51>;
+				focaltech,ft-fw-name = "ft5336_firmware_ofilm.fw";
+			};
+			focaltech,cfg_2 {
+				focaltech,chip = <0x14>;
+				focaltech,vendor = <0x89>;
+				focaltech,ft-fw-name = "ft5336_firmware_wintek.fw";
+			};
+			focaltech,cfg_3 {
+				focaltech,chip = <0x14>;
+				focaltech,vendor = <0x3B>;
+				focaltech,ft-fw-name = "ft5336_firmware_biel.fw";
+			};
 		};
 	};
 

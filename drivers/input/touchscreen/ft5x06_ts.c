@@ -71,6 +71,7 @@
 #define FT_REG_RESET_FW		0x07
 #define FT_REG_FW_MIN_VER	0xB2
 #define FT_REG_FW_SUB_MIN_VER	0xB3
+#define FT5x0x_ID_G_FT5201ID	0xA8 //v_id register
 
 /* power register bits*/
 #define FT_PMODE_ACTIVE		0x00
@@ -190,12 +191,16 @@ struct ft5x06_ts_data {
 	const struct ft5x06_ts_platform_data *pdata;
 	struct regulator *vdd;
 	struct regulator *vcc_i2c;
+	struct kobject *vkeys_dir;
+	struct kobj_attribute vkeys_attr;
 	char fw_name[FT_FW_NAME_MAX_LEN];
 	bool loading_fw;
 	u8 family_id;
 	struct dentry *dir;
 	u16 addr;
 	bool suspended;
+	u8 chip_id;
+	u8 vendor_id;
 	char *ts_info;
 	u8 *tch_data;
 	u32 tch_data_len;
@@ -589,10 +594,22 @@ static int fb_notifier_callback(struct notifier_block *self,
 	if (evdata && evdata->data && event == FB_EVENT_BLANK &&
 			ft5x06_data && ft5x06_data->client) {
 		blank = evdata->data;
-		if (*blank == FB_BLANK_UNBLANK)
+		switch (*blank) {
+		case FB_BLANK_UNBLANK:
+		case FB_BLANK_NORMAL:
+		case FB_BLANK_VSYNC_SUSPEND:
+		case FB_BLANK_HSYNC_SUSPEND:
+			pr_info("ft5x06: resume requested!\n");
 			ft5x06_ts_resume(&ft5x06_data->client->dev);
-		else if (*blank == FB_BLANK_POWERDOWN)
+			break;
+		case FB_BLANK_POWERDOWN:
+			pr_info("ft5x06: suspend requested!\n");
 			ft5x06_ts_suspend(&ft5x06_data->client->dev);
+			break;
+		default:
+			/* Don't handle what we don't understand */
+			break;
+		}
 	}
 
 	return 0;
@@ -1031,6 +1048,39 @@ static ssize_t ft5x06_fw_name_store(struct device *dev,
 	return size;
 }
 
+/* check and load our firmware */
+static int ft5x06_load_firmware(struct ft5x06_ts_platform_data *pdata,
+					struct ft5x06_ts_data *data)
+{
+	struct ft5x06_firmware_data *firmware = pdata->firmware;
+	struct i2c_client *client = data->client;
+	int i;
+
+	if(firmware == NULL)
+		return 1;
+
+	for (i = 0; i < pdata->cfg_size; i++, firmware++) {
+		if (data->vendor_id == firmware->vendor_id) {
+			if (client->dev.of_node) {
+				if(data->chip_id == firmware->chip_id) {
+					dev_info(&client->dev, "found it!\n");
+					break;
+				} else
+					continue;
+			} else {
+				break;
+			}
+		}
+	}
+
+	if(client->dev.of_node) {
+		dev_info(&client->dev, "Firmware Detected = %s\n", firmware->ft_fw_name);
+		pdata->fw_name = firmware->ft_fw_name;
+	}
+
+	return 0;
+}
+
 static DEVICE_ATTR(fw_name, 0664, ft5x06_fw_name_show, ft5x06_fw_name_store);
 
 static bool ft5x06_debug_addr_is_valid(int addr)
@@ -1192,12 +1242,7 @@ static int ft5x06_get_dt_coords(struct device *dev, char *name,
 		return rc;
 	}
 
-	if (!strcmp(name, "focaltech,panel-coords")) {
-		pdata->panel_minx = coords[0];
-		pdata->panel_miny = coords[1];
-		pdata->panel_maxx = coords[2];
-		pdata->panel_maxy = coords[3];
-	} else if (!strcmp(name, "focaltech,display-coords")) {
+	if (!strcmp(name, "focaltech,display-coords")) {
 		pdata->x_min = coords[0];
 		pdata->y_min = coords[1];
 		pdata->x_max = coords[2];
@@ -1213,10 +1258,11 @@ static int ft5x06_get_dt_coords(struct device *dev, char *name,
 static int ft5x06_parse_dt(struct device *dev,
 			struct ft5x06_ts_platform_data *pdata)
 {
-	int rc;
+	int rc, j;
 	struct device_node *np = dev->of_node;
+	struct device_node *sub_np;
 	struct property *prop;
-	u32 temp_val, num_buttons;
+	u32 temp_val, num_buttons, num_fw;
 	u32 button_map[MAX_BUTTONS];
 
 	pdata->name = "focaltech";
@@ -1225,10 +1271,6 @@ static int ft5x06_parse_dt(struct device *dev,
 		dev_err(dev, "Unable to read name\n");
 		return rc;
 	}
-
-	rc = ft5x06_get_dt_coords(dev, "focaltech,panel-coords", pdata);
-	if (rc && (rc != -EINVAL))
-		return rc;
 
 	rc = ft5x06_get_dt_coords(dev, "focaltech,display-coords", pdata);
 	if (rc)
@@ -1249,13 +1291,6 @@ static int ft5x06_parse_dt(struct device *dev,
 				0, &pdata->irq_gpio_flags);
 	if (pdata->irq_gpio < 0)
 		return pdata->irq_gpio;
-
-	pdata->fw_name = "ft_fw.bin";
-	rc = of_property_read_string(np, "focaltech,fw-name", &pdata->fw_name);
-	if (rc && (rc != -EINVAL)) {
-		dev_err(dev, "Unable to read fw name\n");
-		return rc;
-	}
 
 	rc = of_property_read_u32(np, "focaltech,group-id", &temp_val);
 	if (!rc)
@@ -1336,17 +1371,14 @@ static int ft5x06_parse_dt(struct device *dev,
 	pdata->ignore_id_check = of_property_read_bool(np,
 						"focaltech,ignore-id-check");
 
-	rc = of_property_read_u32(np, "focaltech,family-id", &temp_val);
-	if (!rc)
-		pdata->family_id = temp_val;
-	else
-		return rc;
-
 	prop = of_find_property(np, "focaltech,button-map", NULL);
 	if (prop) {
 		num_buttons = prop->length / sizeof(temp_val);
-		if (num_buttons > MAX_BUTTONS)
+		if (num_buttons > MAX_BUTTONS) {
 			return -EINVAL;
+		} else {
+			dev_info(dev, "value num_buttons = %d buttons", num_buttons);
+		}
 
 		rc = of_property_read_u32_array(np,
 			"focaltech,button-map", button_map,
@@ -1355,6 +1387,48 @@ static int ft5x06_parse_dt(struct device *dev,
 			dev_err(dev, "Unable to read key codes\n");
 			return rc;
 		}
+	}
+
+	rc = of_property_read_u32(np, "focaltech,firmware-array-size", &num_fw);
+	if (rc) {
+		dev_err(dev, "can't get firmware-array-size\n");
+		return rc;
+	}
+	pr_info("ft5x06: num_fw = %d\n", num_fw);
+
+	pdata->firmware = kmalloc(sizeof(struct ft5x06_firmware_data) * (num_fw + 1),
+					GFP_KERNEL);
+	if (pdata->firmware == NULL)
+		return -ENOMEM;
+
+	pdata->cfg_size = num_fw;
+
+	j = 0;
+	for_each_child_of_node(np, sub_np) {
+		rc = of_property_read_u32(sub_np, "focaltech,chip", &temp_val);
+		if (rc) {
+			dev_err(dev, "can't get chip id\n");
+			return rc;
+		} else {
+			pdata->firmware[j].chip_id = (u8)temp_val;
+		}
+
+		rc = of_property_read_u32(sub_np, "focaltech,vendor", &temp_val);
+		if (rc) {
+			dev_err(dev, "can't get vendor id\n");
+			return rc;
+		} else {
+			pdata->firmware[j].vendor_id = (u8)temp_val;
+		}
+
+		rc = of_property_read_string(sub_np, "focaltech,ft-fw-name",
+						&pdata->firmware[j].ft_fw_name);
+		if (rc && (rc != -EINVAL)) {
+			dev_err(dev, "can't read fw-name\n");
+			return rc;
+		}
+
+		j++;
 	}
 
 	return 0;
@@ -1366,6 +1440,64 @@ static int ft5x06_parse_dt(struct device *dev,
 	return -ENODEV;
 }
 #endif
+
+static ssize_t ft5x06_vkeys_show(struct kobject *kobj,
+					struct kobj_attribute *attr, char *buf)
+{
+
+	struct ft5x06_ts_data *data =
+ 		container_of(attr, struct ft5x06_ts_data, vkeys_attr);
+
+	struct button {
+		int keycode;
+		int x, y;
+		int width, height;
+	} buttons[3];
+
+	ssize_t size = 0, i;
+
+	buttons[0].keycode = 580; // APP_SWITCH, 139 for MENU
+	buttons[0].x = 155;
+
+	if (data->chip_id == FT5316_ID)
+		buttons[0].y = 1317;
+	else
+		buttons[0].y = 1319;
+
+	buttons[0].width = 10;
+	buttons[0].height = 50;
+
+	buttons[1].keycode = 172; // HOME
+	buttons[1].x = 355;
+
+	if (data->chip_id == FT5316_ID)
+                buttons[1].y = 1317;
+        else
+                buttons[1].y = 1319;
+
+	buttons[1].width = 10;
+	buttons[1].height = 50;
+
+	buttons[2].keycode = 158; // BACK
+	buttons[2].x = 565;
+
+	if (data->chip_id == FT5316_ID)
+                buttons[2].y = 1317;
+        else
+                buttons[2].y = 1319;
+
+	buttons[2].width = 10;
+	buttons[2].height = 50;
+
+	for (i = 0; i < 3; ++i) {
+		size += snprintf(buf+size, PAGE_SIZE-size, "0x%02x:%d:%d:%d:%d:%d\n", EV_KEY, buttons[i].keycode, buttons[i].x + buttons[i].width / 2,
+							buttons[i].y + buttons[i].height / 2, buttons[i].width,
+							buttons[i].height);
+	}
+
+	return size;
+}
+
 
 static int ft5x06_ts_probe(struct i2c_client *client,
 			   const struct i2c_device_id *id)
@@ -1411,16 +1543,6 @@ static int ft5x06_ts_probe(struct i2c_client *client,
 		return -ENOMEM;
 	}
 
-	if (pdata->fw_name) {
-		len = strlen(pdata->fw_name);
-		if (len > FT_FW_NAME_MAX_LEN - 1) {
-			dev_err(&client->dev, "Invalid firmware name\n");
-			return -EINVAL;
-		}
-
-		strlcpy(data->fw_name, pdata->fw_name, len + 1);
-	}
-
 	data->tch_data_len = FT_TCH_LEN(pdata->num_max_touches);
 	data->tch_data = devm_kzalloc(&client->dev,
 				data->tch_data_len, GFP_KERNEL);
@@ -1456,12 +1578,6 @@ static int ft5x06_ts_probe(struct i2c_client *client,
 			     pdata->x_max, 0, 0);
 	input_set_abs_params(input_dev, ABS_MT_POSITION_Y, pdata->y_min,
 			     pdata->y_max, 0, 0);
-
-	err = input_register_device(input_dev);
-	if (err) {
-		dev_err(&client->dev, "Input device registration failed\n");
-		goto free_inputdev;
-	}
 
 	if (pdata->power_init) {
 		err = pdata->power_init(true);
@@ -1525,17 +1641,56 @@ static int ft5x06_ts_probe(struct i2c_client *client,
 	/* make sure CTP already finish startup process */
 	msleep(data->pdata->soft_rst_dly);
 
-	/* check the controller id */
+	/* check the controller/chip id */
 	reg_addr = FT_REG_ID;
-	err = ft5x06_i2c_read(client, &reg_addr, 1, &reg_value, 1);
+	err = ft5x06_i2c_read(client, &reg_addr, 1, &data->chip_id, 1);
 	if (err < 0) {
 		dev_err(&client->dev, "version read failed");
 		goto free_reset_gpio;
 	}
+	dev_info(&client->dev, "Firmware Chip ID = 0x%x\n", data->chip_id);
 
-	dev_info(&client->dev, "Device ID = 0x%x\n", reg_value);
+	/* check the vendor id */
+	reg_addr = FT5x0x_ID_G_FT5201ID;
+	err = ft5x06_i2c_read(client, &reg_addr, 1, &data->vendor_id, 1);
+	if (err < 0) {
+		dev_err(&client->dev, "version read failed");
+	} else {
+		dev_info(&client->dev, "Firmware version ID = 0x%x\n", data->vendor_id);
+	}
 
-	if ((pdata->family_id != reg_value) && (!pdata->ignore_id_check)) {
+	err = ft5x06_load_firmware(pdata, data);
+	if (err) {
+		dev_info(&client->dev, "Firmware cannot be loaded");
+	}
+
+   	/* TODO: find a better to handle this? maybe? */
+	/* Detect proper family_id */
+        if(data->chip_id == FT5316_ID)
+                pdata->family_id = FT5316_ID;
+        else
+                pdata->family_id = data->chip_id;
+
+	/* Changing Firmware Details here */
+	if (pdata->fw_name) {
+		len = strlen(pdata->fw_name);
+		if (len > FT_FW_NAME_MAX_LEN - 1) {
+			dev_err(&client->dev, "Invalid firmware name\n");
+			return -EINVAL;
+		}
+		dev_info(&client->dev, "Firmware Loaded = %s\n", pdata->fw_name);
+		strlcpy(data->fw_name, pdata->fw_name, len + 1);
+	}
+
+	/* register our device */
+	err = input_register_device(input_dev);
+	if (err) {
+		dev_err(&client->dev, "Input device registration failed\n");
+		goto free_inputdev;
+	}
+
+	/* check controller support */
+	if ((pdata->family_id != data->chip_id) && (!pdata->ignore_id_check)) {
 		dev_err(&client->dev, "%s:Unsupported controller\n", __func__);
 		goto free_reset_gpio;
 	}
@@ -1640,9 +1795,7 @@ static int ft5x06_ts_probe(struct i2c_client *client,
 
 #if defined(CONFIG_FB)
 	data->fb_notif.notifier_call = fb_notifier_callback;
-
 	err = fb_register_client(&data->fb_notif);
-
 	if (err)
 		dev_err(&client->dev, "Unable to register fb_notifier: %d\n",
 			err);
@@ -1654,7 +1807,29 @@ static int ft5x06_ts_probe(struct i2c_client *client,
 	register_early_suspend(&data->early_suspend);
 #endif
 
+	data->vkeys_dir = kobject_create_and_add("board_properties", NULL);
+	if (data->vkeys_dir == NULL) {
+		err = -ENOMEM;
+		dev_err(&client->dev, "fail to create board_properties entry\n");
+		goto free_create_kobject;
+	}
+
+	sysfs_attr_init(&data->vkeys_attr.attr);
+	data->vkeys_attr.attr.name = "virtualkeys.ft5x06_ts";
+	data->vkeys_attr.attr.mode = S_IRUSR | S_IRGRP | S_IROTH;
+	data->vkeys_attr.show  = ft5x06_vkeys_show;
+
+	err = sysfs_create_file(data->vkeys_dir, &data->vkeys_attr.attr);
+	if (err) {
+		dev_err(&client->dev, "fail to create virtualkeys entry\n");
+		goto free_create_vkeys_sysfs;
+	}
+
 	return 0;
+
+free_create_vkeys_sysfs:
+
+free_create_kobject:
 
 free_debug_dir:
 	debugfs_remove_recursive(data->dir);
