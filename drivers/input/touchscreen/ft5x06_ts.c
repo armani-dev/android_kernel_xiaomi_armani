@@ -980,8 +980,10 @@ static int fb_notifier_callback(struct notifier_block *self,
 		case FB_BLANK_NORMAL:
 		case FB_BLANK_VSYNC_SUSPEND:
 		case FB_BLANK_HSYNC_SUSPEND:
-			dev_info(ft5x06->dev, "resume requested");
-			ft5x06_resume(ft5x06);
+			if(ft5x06->in_suspend) {
+				dev_info(ft5x06->dev, "resume requested");
+				ft5x06_resume(ft5x06);
+			}
 			break;
 		case FB_BLANK_POWERDOWN:
 			dev_info(ft5x06->dev, "suspend requested");
