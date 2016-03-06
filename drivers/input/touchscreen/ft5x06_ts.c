@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2011 XiaoMi, Inc.
+ * Copyright (C) 2016 armani-dev project
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -257,7 +258,9 @@ static void ft5x06_noise_filter_delayed_work(struct work_struct *work)
 	struct delayed_work *delayed_work = to_delayed_work(work);
 	struct ft5x06_data *ft5x06 = container_of(delayed_work, struct ft5x06_data, noise_filter_delayed_work);
 
-	dev_info(ft5x06->dev, "ft5x06_noise_filter_delayed_work called\n");
+	if (ft5x06->dbgdump)
+		dev_info(ft5x06->dev, "ft5x06_noise_filter_delayed_work called\n");
+
 	ft5x06_charger_state_changed(ft5x06, true);
 }
 
@@ -966,23 +969,27 @@ static int fb_notifier_callback(struct notifier_block *self,
 {
 	struct fb_event *evdata = data;
 	int *blank;
-	static int u_blank;
 	struct ft5x06_data *ft5x06 =
 		container_of(self, struct ft5x06_data, fb_notif);
 
 	if (evdata && evdata->data && event == FB_EVENT_BLANK &&
 			ft5x06 && ft5x06->dev) {
 		blank = evdata->data;
-		if (*blank == FB_BLANK_UNBLANK) {
-			if(u_blank) {
-				pr_info("ft5x06 resume!\n");
-				ft5x06_resume(ft5x06);
-			}
-		}
-		else if (*blank == FB_BLANK_POWERDOWN) {
-			u_blank = 1;
-			pr_info("ft5x06 suspend!\n");
+		switch (*blank) {
+		case FB_BLANK_UNBLANK:
+		case FB_BLANK_NORMAL:
+		case FB_BLANK_VSYNC_SUSPEND:
+		case FB_BLANK_HSYNC_SUSPEND:
+			dev_info(ft5x06->dev, "resume requested");
+			ft5x06_resume(ft5x06);
+			break;
+		case FB_BLANK_POWERDOWN:
+			dev_info(ft5x06->dev, "suspend requested");
 			ft5x06_suspend(ft5x06);
+			break;
+		default:
+			/* Don't handle what we don't understand */
+			break;
 		}
 	}
 
@@ -1557,44 +1564,6 @@ pwr_deinit:
 	return 0;
 }
 
-static void ft5x06_dt_dump(struct device *dev,
-			struct ft5x06_ts_platform_data *pdata)
-{
-	int key_num;
-	int i, j;
-
-	pr_info("i2c-pull-up = %d\n", (int)pdata->i2c_pull_up);
-	pr_info("reset gpio = %d\n", (int)pdata->reset_gpio);
-	pr_info("irq gpio = %d\n", (int)pdata->irq_gpio);
-	pr_info("x_max = %d\n", (int)pdata->x_max);
-	pr_info("y_max = %d\n", (int)pdata->y_max);
-	pr_info("z_max = %d\n", (int)pdata->z_max);
-	pr_info("w_max = %d\n", (int)pdata->w_max);
-	pr_info("landing_jiffies = %d\n", (int)pdata->landing_jiffies);
-	pr_info("landing_threshold = %d\n", (int)pdata->landing_threshold);
-	pr_info("staying_threshold = %d\n", (int)pdata->staying_threshold);
-	pr_info("raw min = %d\n", (int)pdata->raw_min);
-	pr_info("raw max = %d\n", (int)pdata->raw_max);
-	for (j = 0; j < pdata->cfg_size; j++) {
-		key_num = pdata->keypad[j].length;
-		pr_info("key_num = %d\n", key_num);
-		for (i = 0; i < key_num; i++) {
-			pr_info("keymap[%d] = %d\n", i, pdata->keypad[j].keymap[i]);
-			pr_info("keypos[%d] = %d\n", i, pdata->keypad[j].key_pos[i]);
-			pr_info("key[%d]: %d %d %d %d\n", i,
-					pdata->keypad[j].button[i].left,
-					pdata->keypad[j].button[i].top,
-					pdata->keypad[j].button[i].width,
-					pdata->keypad[j].button[i].height);
-		}
-	}
-
-	pr_info("firmare 0 chip = 0x%x, vendor = 0x%x name = %s\n",
-			pdata->firmware[0].chip,
-			pdata->firmware[0].vendor,
-			pdata->firmware[0].fwname);
-}
-
 static int ft5x06_parse_dt(struct device *dev,
 			struct ft5x06_ts_platform_data *pdata)
 {
@@ -1784,8 +1753,6 @@ static int ft5x06_parse_dt(struct device *dev,
 		j ++;
 	}
 
-	ft5x06_dt_dump(dev, pdata);
-
 	return 0;
 }
 
@@ -1929,12 +1896,14 @@ struct ft5x06_data *ft5x06_probe(struct device *dev,
 	set_bit(EV_KEY, ft5x06->input->evbit);
 	set_bit(EV_ABS, ft5x06->input->evbit);
 
+	/* read chip data */
 	error = ft5x06_read_byte(ft5x06, FT5X0X_REG_CHIP_ID, &ft5x06->chip_id);
 	if (error) {
 		dev_err(dev, "failed to read chip id\n");
 		goto err_free_input;
 	}
 
+	/* load our firmware*/
 	error = ft5x06_load_firmware(ft5x06, pdata->firmware, NULL);
 	if (error) {
 		dev_err(dev, "fail to load firmware\n");
@@ -1991,13 +1960,10 @@ struct ft5x06_data *ft5x06_probe(struct device *dev,
 	}
 
 #if defined(CONFIG_FB)
-	ft5x06->fb_notif.notifier_call = fb_notifier_callback;
-
+	 ft5x06->fb_notif.notifier_call = fb_notifier_callback;
 	 error = fb_register_client(&ft5x06->fb_notif);
-
 	 if (error)
-		 dev_err(dev, "Unable to register fb_notifier: %d\n",
-			 error);
+		 dev_err(dev, "Unable to register fb_notifier: %d\n", error);
 #elif defined(CONFIG_HAS_EARLYSUSPEND)
 	ft5x06->early_suspend.level   = EARLY_SUSPEND_LEVEL_BLANK_SCREEN+1;
 	ft5x06->early_suspend.suspend = ft5x06_early_suspend;
@@ -2050,14 +2016,10 @@ void ft5x06_remove(struct ft5x06_data *ft5x06)
 {
 	struct ft5x06_ts_platform_data *pdata = ft5x06->dev->platform_data;
 
-#if defined(CONFIG_FB)
-	int error;
-#endif
 	cancel_delayed_work_sync(&ft5x06->noise_filter_delayed_work);
 	unregister_power_supply_notifier(&ft5x06->power_supply_notifier);
 #if defined(CONFIG_FB)
-	error = fb_unregister_client(&ft5x06->fb_notif);
-	if (error)
+	if (fb_unregister_client(&ft5x06->fb_notif))
 		dev_err(ft5x06->dev, "Error occurred while unregistering fb_notifier.\n");
 #elif defined(CONFIG_HAS_EARLYSUSPEND)
 	unregister_early_suspend(&ft5x06->early_suspend);
