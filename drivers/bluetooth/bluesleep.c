@@ -51,6 +51,43 @@
 #include <net/bluetooth/hci_core.h> /* event notifications */
 #include "hci_uart.h"
 
+#include <net/bluetooth/hci_core.h> /* event notifications */
+#include "hci_uart.h"
+
+static unsigned int bt_debug = 0;
+module_param_named(bt_debug_mask, bt_debug, uint, 0644);
+
+/* LGE_CHANGE_S, [BT][younghyun.kwon@lge.com], 2013-04-10, Configuration bluesleep for A1 LPM */
+#ifdef CONFIG_LGE_BLUESLEEP
+#undef BT_ERR
+#define BT_ERR(fmt, arg...)  printk(KERN_ERR "*[bluesleep(%d)-%s()] " fmt "\n" , __LINE__, __FUNCTION__, ## arg)
+#undef BT_INFO
+#define BT_INFO(fmt, arg...)										\
+do {													\
+	if (bt_debug)											\
+		printk(KERN_INFO "*[bluesleep(%d)-%s()] " fmt "\n" , __LINE__, __FUNCTION__, ## arg);	\
+} while (0)
+
+#undef BT_DBG
+#define BT_DBG(fmt, arg...)										\
+do {													\
+	if (bt_debug)											\
+		printk(KERN_ERR "*[bluesleep(%d)-%s()] " fmt "\n" , __LINE__, __FUNCTION__, ## arg);	\
+} while (0)
+
+#define BT_PORT_ID	99
+
+//BT_S : [PSIX-6850] LPM_SLEEP_MODE_DO_NOT_UART_CLOSE
+#define UART_OFF 1
+#define UART_NOT_OFF 0
+//BT_E : [PSIX-6850] LPM_SLEEP_MODE_DO_NOT_UART_CLOSE
+#endif /* CONFIG_LGE_BLUESLEEP */
+/* LGE_CHANGE_E, [BT][younghyun.kwon@lge.com], 2013-04-10 */
+
+//BT_S : [CONBT-952] Remove duplicate bluesleep log
+#define REMOVE_DUPLICATE_BT_LOG
+//BT_E : [CONBT-952] Remove duplicate bluesleep log
+
 #define BT_SLEEP_DBG
 #ifndef BT_SLEEP_DBG
 #define BT_DBG(fmt, arg...)
