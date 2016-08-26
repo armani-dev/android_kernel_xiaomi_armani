@@ -669,7 +669,7 @@ static int venus_hfi_unvote_bus(void *dev,
 	struct venus_hfi_device *device = dev;
 
 	if (!device) {
-		dprintk(VIDC_ERR, "%s invalid device handle %p",
+		dprintk(VIDC_ERR, "%s invalid device handle %pK",
 			__func__, device);
 		return -EINVAL;
 	}
@@ -766,7 +766,7 @@ static int venus_hfi_scale_bus(void *dev, int load,
 	int bus_vector = 0;
 
 	if (!device) {
-		dprintk(VIDC_ERR, "%s invalid device handle %p",
+		dprintk(VIDC_ERR, "%s invalid device handle %pK",
 			__func__, device);
 		return -EINVAL;
 	}
@@ -980,14 +980,14 @@ static int __set_ocmem(struct venus_hfi_device *device, bool locked)
 	struct on_chip_mem *ocmem;
 
 	if (!device) {
-		dprintk(VIDC_ERR, "%s Invalid param, device: 0x%p\n",
+		dprintk(VIDC_ERR, "%s Invalid param, device: 0x%pK\n",
 				__func__, device);
 		return -EINVAL;
 	}
 
 	ocmem = &device->resources.ocmem;
 	if (!ocmem->buf) {
-		dprintk(VIDC_ERR, "Invalid params, ocmem_buffer: 0x%p\n",
+		dprintk(VIDC_ERR, "Invalid params, ocmem_buffer: 0x%pK\n",
 			ocmem->buf);
 		return -EINVAL;
 	}
@@ -1215,7 +1215,7 @@ static inline void venus_hfi_clk_disable(struct venus_hfi_device *device)
 	struct venus_core_clock *cl;
 
 	if (!device) {
-		dprintk(VIDC_ERR, "Invalid params: %p\n", device);
+		dprintk(VIDC_ERR, "Invalid params: %pK\n", device);
 		return;
 	}
 	WARN(!mutex_is_locked(&device->clk_pwr_lock),
@@ -1511,7 +1511,7 @@ static int venus_hfi_scale_clocks(void *dev, int load)
 	int rc = 0;
 	struct venus_hfi_device *device = dev;
 	if (!device) {
-		dprintk(VIDC_ERR, "Invalid args: %p\n", device);
+		dprintk(VIDC_ERR, "Invalid args: %pK\n", device);
 		return -EINVAL;
 	}
 	device->clk_load = load;
@@ -2121,7 +2121,7 @@ static int venus_hfi_get_q_size(struct venus_hfi_device *dev,
 static inline void venus_hfi_clk_gating_on(struct venus_hfi_device *device)
 {
 	if (!device) {
-		dprintk(VIDC_ERR, "Invalid params: %p\n", device);
+		dprintk(VIDC_ERR, "Invalid params: %pK\n", device);
 		return;
 	}
 	if (device->clk_state != ENABLED_PREPARED) {
@@ -2508,7 +2508,7 @@ static int venus_hfi_session_clean(void *session)
 	}
 	sess_close = session;
 	device = sess_close->device;
-	dprintk(VIDC_DBG, "deleted the session: 0x%p",
+	dprintk(VIDC_DBG, "deleted the session: 0x%pK",
 			sess_close);
 	mutex_lock(&device->session_lock);
 	list_del(&sess_close->list);
@@ -3832,7 +3832,7 @@ static int venus_hfi_get_info(void *dev, enum dev_info info)
 	int rc = 0;
 	struct venus_hfi_device *device = dev;
 	if (!device) {
-		dprintk(VIDC_ERR, "%s Invalid parameter: %p\n",
+		dprintk(VIDC_ERR, "%s Invalid parameter: %pK\n",
 				__func__, device);
 		return -EINVAL;
 	}
