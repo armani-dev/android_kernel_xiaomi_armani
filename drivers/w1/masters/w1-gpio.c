@@ -48,17 +48,18 @@ static void w1_gpio_write_bit_val(void *data, u8 bit)
 static u8 w1_gpio_read_bit(void *data)
 {
 	struct w1_gpio_platform_data *pdata = data;
+	u8 bit = gpio_get_value(pdata->pin);
 
-	return gpio_get_value(pdata->pin) ? 1 : 0;
+	return  bit ? 1 : 0;
 }
 
-static int w1_gpio_probe_dt(struct device_node *node, 
+static int w1_gpio_probe_dt(struct device_node *node,
 			struct w1_gpio_platform_data *pdata)
 {
 	char *key;
 	int ret;
 	unsigned int is_open_drain;
-	
+
 	key = "qcom,gpio-pin";
 	ret = of_property_read_u32(node, key, &(pdata->pin));
 	if (ret) {
@@ -66,15 +67,15 @@ static int w1_gpio_probe_dt(struct device_node *node,
                 return ret;
 	}
 
-	pr_info("gpio %d\n", pdata->pin);	
+	pr_info("gpio %d\n", pdata->pin);
 	key = "qcom,is-open-drain";
 	ret = of_property_read_u32(node, key, &(is_open_drain));
 	if (ret) {
                 pr_err("%s: missing DT key '%s'\n", __func__, key);
                 return ret;
 	}
-	pdata->is_open_drain = is_open_drain?1:0;
-	
+	pdata->is_open_drain = is_open_drain ? 1 : 0;
+
 	return 0;
 }
 
@@ -91,7 +92,7 @@ static int __init w1_gpio_probe(struct platform_device *pdev)
                         return -ENOMEM;
                 pdev->dev.platform_data =(void *) pdata;
 	}
-	
+
 	node = pdev->dev.of_node;
 	/* parse dt */
 	err = w1_gpio_probe_dt(node, pdata);
@@ -184,7 +185,7 @@ static int w1_gpio_resume(struct platform_device *pdev)
 
 static struct platform_driver w1_gpio_driver = {
 	.driver = {
-		.name	= "w1-gpio",
+		.name	= "qcom,w1-gpio",
 		.owner	= THIS_MODULE,
 		.of_match_table = w1_gpio_match_table,
 	},
