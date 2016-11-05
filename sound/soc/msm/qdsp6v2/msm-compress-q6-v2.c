@@ -88,6 +88,11 @@ struct msm_compr_gapless_state {
 	bool use_dsp_gapless_mode;
 };
 
+static unsigned int supported_sample_rates[] = {
+	8000, 11025, 12000, 16000, 22050, 24000, 32000, 44100, 48000, 64000,
+	88200, 96000, 176400, 192000
+};
+
 struct msm_compr_pdata {
 	atomic_t audio_ocmem_req;
 	struct snd_compr_stream *cstream[MSM_FRONTEND_DAI_MAX];
@@ -309,7 +314,7 @@ static void compr_event_handler(uint32_t opcode,
 	pr_debug("%s opcode =%08x\n", __func__, opcode);
 	switch (opcode) {
 	case ASM_DATA_EVENT_WRITE_DONE_V2:
-		spin_lock(&prtd->lock);
+		spin_lock_irqsave(&prtd->lock, flags);
 
 		if (payload[3]) {
 			pr_err("WRITE FAILED w/ err 0x%x !, paddr 0x%x"
@@ -334,7 +339,7 @@ static void compr_event_handler(uint32_t opcode,
 			/* Writes must be restarted from _copy() */
 			pr_debug("write_done received while not started, treat as xrun");
 			atomic_set(&prtd->xrun, 1);
-			spin_unlock(&prtd->lock);
+			spin_unlock_irqrestore(&prtd->lock, flags);
 			break;
 		}
 
@@ -359,10 +364,10 @@ static void compr_event_handler(uint32_t opcode,
 		} else
 			msm_compr_send_buffer(prtd);
 
-		spin_unlock(&prtd->lock);
+		spin_unlock_irqrestore(&prtd->lock, flags);
 		break;
 	case ASM_DATA_EVENT_RENDERED_EOS:
-		spin_lock(&prtd->lock);
+		spin_lock_irqsave(&prtd->lock, flags);
 		pr_debug("%s: ASM_DATA_CMDRSP_EOS token 0x%x,stream id %d\n",
 			  __func__, token, STREAM_ID_FROM_TOKEN(token));
 		stream_id = STREAM_ID_FROM_TOKEN(token);
@@ -378,7 +383,7 @@ static void compr_event_handler(uint32_t opcode,
 		    stream_index < 0) {
 			pr_err("%s: Invalid stream index %d", __func__,
 				stream_index);
-			spin_unlock(&prtd->lock);
+			spin_unlock_irqrestore(&prtd->lock, flags);
 			break;
 		}
 
@@ -393,7 +398,7 @@ static void compr_event_handler(uint32_t opcode,
 		}
 		if (prtd->gapless_state.gapless_transition)
 			prtd->gapless_state.gapless_transition = 0;
-		spin_unlock(&prtd->lock);
+		spin_unlock_irqrestore(&prtd->lock, flags);
 		break;
 	case ASM_DATA_EVENT_SR_CM_CHANGE_NOTIFY:
 	case ASM_DATA_EVENT_ENC_SR_CM_CHANGE_NOTIFY: {
@@ -412,9 +417,9 @@ static void compr_event_handler(uint32_t opcode,
 			/* check if the first buffer need to be sent to DSP */
 			pr_debug("ASM_SESSION_CMD_RUN_V2\n");
 
-			spin_lock(&prtd->lock);
-			/* FIXME: A state is a much better way of dealing with this */
-			if (prtd->bytes_sent == 0) {
+			/* FIXME: A state is a better way, dealing with this*/
+			spin_lock_irqsave(&prtd->lock, flags);
+			if (!prtd->bytes_sent) {
 				bytes_available = prtd->bytes_received - prtd->copied_total;
 				if (bytes_available < cstream->runtime->fragment_size) {
 					pr_debug("CMD_RUN_V2 Insufficient data to send. break out\n");
@@ -422,7 +427,7 @@ static void compr_event_handler(uint32_t opcode,
 				} else
 					msm_compr_send_buffer(prtd);
 			}
-			spin_unlock(&prtd->lock);
+			spin_unlock_irqrestore(&prtd->lock, flags);
 			break;
 		case ASM_STREAM_CMD_FLUSH:
 			pr_debug("%s: ASM_STREAM_CMD_FLUSH:", __func__);
@@ -853,40 +858,16 @@ static int msm_compr_set_params(struct snd_compr_stream *cstream,
 	struct snd_compr_runtime *runtime = cstream->runtime;
 	struct msm_compr_audio *prtd = runtime->private_data;
 	int ret = 0, frame_sz = 0, delay_time_ms = 0;
+	int i, num_rates;
 
 	pr_debug("%s\n", __func__);
 
-	memcpy(&prtd->codec_param, params, sizeof(struct snd_compr_params));
-
-	/* ToDo: remove duplicates */
-	prtd->num_channels = prtd->codec_param.codec.ch_in;
-
-	switch (prtd->codec_param.codec.sample_rate) {
-	case SNDRV_PCM_RATE_8000:
-		prtd->sample_rate = 8000;
-		break;
-	case SNDRV_PCM_RATE_11025:
-		prtd->sample_rate = 11025;
-		break;
-	/* ToDo: What about 12K and 24K sample rates ? */
-	case SNDRV_PCM_RATE_16000:
-		prtd->sample_rate = 16000;
-		break;
-	case SNDRV_PCM_RATE_22050:
-		prtd->sample_rate = 22050;
-		break;
-	case SNDRV_PCM_RATE_32000:
-		prtd->sample_rate = 32000;
-		break;
-	case SNDRV_PCM_RATE_44100:
-		prtd->sample_rate = 44100;
-		break;
-	case SNDRV_PCM_RATE_48000:
-		prtd->sample_rate = 48000;
-		break;
-	}
-
-	pr_debug("%s: sample_rate %d\n", __func__, prtd->sample_rate);
+	num_rates = sizeof(supported_sample_rates)/sizeof(unsigned int);
+	for (i = 0; i < num_rates; i++)
+		if (params->codec.sample_rate == supported_sample_rates[i])
+			break;
+	if (i == num_rates)
+		return -EINVAL;
 
 	switch (params->codec.id) {
 	case SND_AUDIOCODEC_PCM: {
@@ -932,6 +913,12 @@ static int msm_compr_set_params(struct snd_compr_stream *cstream,
 			delay_time_ms - PARTIAL_DRAIN_ACK_EARLY_BY_MSEC : 0;
 	prtd->partial_drain_delay = delay_time_ms;
 
+	memcpy(&prtd->codec_param, params, sizeof(struct snd_compr_params));
+
+	/* ToDo: remove duplicates */
+	prtd->num_channels = prtd->codec_param.codec.ch_in;
+	prtd->sample_rate = prtd->codec_param.codec.sample_rate;
+	pr_debug("%s: sample_rate %d\n", __func__, prtd->sample_rate);
 	ret = msm_compr_configure_dsp(cstream);
 
 	return ret;
@@ -1603,7 +1590,11 @@ static int msm_compr_get_codec_caps(struct snd_compr_stream *cstream,
 	case SND_AUDIOCODEC_MP3:
 		codec->num_descriptors = 2;
 		codec->descriptor[0].max_ch = 2;
-		codec->descriptor[0].sample_rates = SNDRV_PCM_RATE_8000_48000;
+		memcpy(codec->descriptor[0].sample_rates,
+		       supported_sample_rates,
+		       sizeof(supported_sample_rates));
+		codec->descriptor[0].num_sample_rates =
+			sizeof(supported_sample_rates)/sizeof(unsigned int);
 		codec->descriptor[0].bit_rate[0] = 320; /* 320kbps */
 		codec->descriptor[0].bit_rate[1] = 128;
 		codec->descriptor[0].num_bitrates = 2;
@@ -1614,7 +1605,11 @@ static int msm_compr_get_codec_caps(struct snd_compr_stream *cstream,
 	case SND_AUDIOCODEC_AAC:
 		codec->num_descriptors = 2;
 		codec->descriptor[1].max_ch = 2;
-		codec->descriptor[1].sample_rates = SNDRV_PCM_RATE_8000_48000;
+		memcpy(codec->descriptor[1].sample_rates,
+		       supported_sample_rates,
+		       sizeof(supported_sample_rates));
+		codec->descriptor[1].num_sample_rates =
+			sizeof(supported_sample_rates)/sizeof(unsigned int);
 		codec->descriptor[1].bit_rate[0] = 320; /* 320kbps */
 		codec->descriptor[1].bit_rate[1] = 128;
 		codec->descriptor[1].num_bitrates = 2;
